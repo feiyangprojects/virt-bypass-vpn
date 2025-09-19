@@ -1,0 +1,40 @@
+name: RPM CI
+
+on:
+  push:
+    branches:
+      - '**'
+    tags:
+      - '**'
+  workflow_dispatch:
+    push:
+    inputs:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout source code
+        uses: actions/checkout@v4
+      - name: Setup environment
+        run: |
+          sudo apt update
+          sudo apt install --yes rpm
+      - name: Generate archive
+        run: |
+          git archive --output=package/package.tar.gz --prefix=virt-bypass-vpn/ HEAD
+      - name: Build RPM packages
+        run: |
+          rpmbuild -bb --define "_sourcedir $PWD/package" --define "_rpmdir $PWD/repository" package/package.spec
+      - name: Publish packages
+        uses: softprops/action-gh-release@v2
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: |
+            **/*.rpm
+      - name: Push packages
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        run: |
+          set -e
+          find -name '*.rpm' -exec curl -F 'package=@{}' 'https://${{ secrets.FURY_TOKEN }}@push.fury.io/${{ secrets.FURY_USERNAME }}/' \;

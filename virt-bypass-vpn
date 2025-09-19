@@ -1,0 +1,59 @@
+#!/usr/bin/bash -e
+function help() {
+    echo -e "Usage: ${0##*/} [OPTION]...\nBypass default libvirt network from VPN.\nExample: ${0##*/} -e -t 8888\n\n  -d  disable VPN bypassing\n  -d  enable VPN bypassing\n  -h  display this help text and exit\n  -t  set bypassing table name"
+    exit "$1"
+}
+
+TABLE=8888
+
+while getopts "dhet:" OPT; do
+  case "$OPT" in
+    d) ACTION='del'; ACTION_BOOL='1' ;;
+    e) ACTION='add'; ACTION_BOOL='0' ;;
+    t) TABLE="$OPTARG" ;;
+    *) help 0 ;;
+  esac
+done
+
+if [ -z "$ACTION" ]; then
+    help 1    
+fi
+
+ROUTE_4="$(ip -4 route list default)"
+ROUTE_6="$(ip -6 route list default)"
+
+INTERFACE_4="$(grep -oP 'default .*dev \K[^ ]+' <<< "$ROUTE_4")"
+INTERFACE_6="$(grep -oP 'default .*dev \K[^ ]+' <<< "$ROUTE_6")"
+GATEWAY_4="$(grep -oP 'default .*via \K[^ ]+' <<< "$ROUTE_4")"
+GATEWAY_6="$(grep -oP 'default .*via \K[^ ]+' <<< "$ROUTE_6")"
+
+route_not_added=0
+if [ -z "$(ip route list 0.0.0.0/0 dev "$INTERFACE_4" via "$GATEWAY_4" table "$TABLE" 2> /dev/null)" ]; then
+    route_not_added=1
+fi
+if [ "$ACTION_BOOL" -ne "$route_not_added" ]; then
+    ip -4 route "$ACTION" 0.0.0.0/0 dev "$INTERFACE_4" via "$GATEWAY_4" table "$TABLE" || true
+    ip -6 route "$ACTION" ::/0 dev "$INTERFACE_6" via "$GATEWAY_6" table "$TABLE" || true
+fi
+
+for ip in $(virsh net-dumpxml default | grep -oP "<ip .*address='\K[^']+"); do
+    if grep '\.' <<< "$ip" > /dev/null; then
+        gateway="$GATEWAY_4"
+        interface="$INTERFACE_4"
+        ip_prefix='24'
+        ip_version='4'
+    else
+        gateway="$GATEWAY_6"
+        interface="$INTERFACE_6"
+        ip_prefix='64'
+        ip_version='6'
+    fi
+
+    rule_not_added=0
+    if [ -z "$(ip "-$ip_version" rule list from "$ip/$ip_prefix" table "$TABLE")" ]; then
+        rule_not_added=1
+    fi
+    if [ "$ACTION_BOOL" -ne "$rule_not_added" ]; then
+        ip "-$ip_version" rule "$ACTION" pref 8888 from "$ip/$ip_prefix" table "$TABLE"
+    fi
+done
