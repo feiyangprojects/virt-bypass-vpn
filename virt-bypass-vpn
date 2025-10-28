@@ -1,6 +1,6 @@
 #!/usr/bin/bash -e
 function help() {
-    echo -e "Usage: ${0##*/} [OPTION]...\nBypass default libvirt network from VPN.\nExample: ${0##*/} -e -t 8888\n\n  -d  disable VPN bypassing\n  -d  enable VPN bypassing\n  -h  display this help text and exit\n  -t  set bypassing table name"
+    echo -e "Usage: ${0##*/} [OPTION]...\nBypass default libvirt network from VPN.\nExample: ${0##*/} -e -t 8888\n\n  -d  disable VPN bypassing\n  -d  enable VPN bypassing\n  -h  display this help text and exit\n  -t  set bypassing table name, it will also be used as the largest priority number"
     exit "$1"
 }
 
@@ -54,6 +54,7 @@ for ip in $(virsh net-dumpxml default | grep -oP "<ip .*address='\K[^']+"); do
         rule_not_added=1
     fi
     if [ "$ACTION_BOOL" -ne "$rule_not_added" ]; then
-        ip "-$ip_version" rule "$ACTION" pref 8888 from "$ip/$ip_prefix" table "$TABLE"
+        ip "-$ip_version" rule "$ACTION" pref "$(($TABLE-1))" from "$ip/$ip_prefix" to "$ip/$ip_prefix" table main
+        ip "-$ip_version" rule "$ACTION" pref "$TABLE" from "$ip/$ip_prefix" table "$TABLE"
     fi
 done

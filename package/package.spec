@@ -13,7 +13,7 @@
 # published by the Open Source Initiative.
 
 Name:           virt-bypass-vpn
-Version:        1.0.0
+Version:        1.0.1
 Release:        0
 Summary:        Bypass default libvirt network from VPN
 License:        GPL-3.0-only
