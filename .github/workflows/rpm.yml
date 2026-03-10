@@ -25,16 +25,40 @@ jobs:
           git archive --output=package/package.tar.gz --prefix=virt-bypass-vpn/ HEAD
       - name: Build RPM packages
         run: |
-          rpmbuild -bb --define "_sourcedir $PWD/package" --define "_rpmdir $PWD/repository" package/package.spec
+          rpmbuild -bb \
+            --define "_sourcedir $PWD/package" \
+            --define "_rpmdir $PWD/repository" \
+            --define '_rpmfilename %%{NAME}-%%{VERSION}-%%{RELEASE}.%%{ARCH}.rpm' \
+            package/package.spec
       - name: Publish packages
         uses: softprops/action-gh-release@v2
         if: ${{ startsWith(github.ref, 'refs/tags/') }}
         with:
           tag_name: ${{ github.ref_name }}
           files: |
+            **/*.deb
             **/*.rpm
       - name: Push packages
         if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        env:
+          CLOUDSMITH_NAMESPACE: ${{ secrets.CLOUDSMITH_NAMESPACE }}
+          CLOUDSMITH_USERNAME: ${{ secrets.CLOUDSMITH_USERNAME }}
+          CLOUDSMITH_API_KEY: ${{ secrets.CLOUDSMITH_API_KEY }}
+          CLOUDSMITH_REPOSITORY: ${{ secrets.CLOUDSMITH_REPOSITORY }}
         run: |
           set -e
-          find -name '*.rpm' -exec curl -F 'package=@{}' 'https://${{ secrets.FURY_TOKEN }}@push.fury.io/${{ secrets.FURY_USERNAME }}/' \;
+          cd repository
+          for type in deb rpm; do
+            PACKAGE="$(find -name "*.$type" -exec basename {} \;)"
+            PACKAGE_IDENTIFIER="$(curl \
+                --header "Content-Sha256: $(sha256sum "$PACKAGE" | cut -d ' ' -f 1)" \
+                --user "$CLOUDSMITH_USERNAME:$CLOUDSMITH_API_KEY" \
+                --upload-file "$PACKAGE" \
+                "https://upload.cloudsmith.io/$CLOUDSMITH_NAMESPACE/$CLOUDSMITH_REPOSITORY/$PACKAGE" | jq -r '.identifier')"
+            curl \
+                --request POST \
+                --user "$CLOUDSMITH_USERNAME:$CLOUDSMITH_API_KEY" \
+                --header "Content-Type: application/json"  \
+                --data "{\"distribution\":\"other$type/any-version\",\"package_file\":\"$PACKAGE_IDENTIFIER\"}" \
+                "https://api.cloudsmith.io/v1/packages/$CLOUDSMITH_NAMESPACE/$CLOUDSMITH_REPOSITORY/upload/$type/"
+          done
