@@ -7,6 +7,6 @@ else ifeq ($(PREFIX),)
 endif
 
 install: $(PROGRAM)
-	install -D --mode=0755 --target-directory=$(DESTDIR)$(PREFIX)/sbin $(PROGRAM)
+	install -D --mode=0755 --target-directory=$(DESTDIR)$(PREFIX)/bin $(PROGRAM)
 
 .PHONY: install
