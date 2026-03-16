@@ -1,7 +1,9 @@
 #!/usr/bin/bash -e
-function help() {
-    echo -e "Usage: ${0##*/} [OPTION]...\nBypass default libvirt network from VPN.\nExample: ${0##*/} -e -t 8888\n\n  -d  disable VPN bypassing\n  -d  enable VPN bypassing\n  -h  display this help text and exit\n  -t  set bypassing table name, it will also be used as the largest priority number" >&2
-    exit "$1"
+function echo_to_stderr() {
+    echo -e "${1:-Usage: ${0##*/} [OPTION]...\nBypass default libvirt network from VPN.\nExample: ${0##*/} -e -t 8888\n\n  -d  disable VPN bypassing\n  -d  enable VPN bypassing\n  -h  display this help text and exit\n  -t  set bypassing table name, it will also be used as the largest priority number}" >&2
+    if [ -n "$2" ]; then
+        exit "$2"
+    fi
 }
 
 while getopts "dhet:" OPT; do
@@ -9,19 +11,22 @@ while getopts "dhet:" OPT; do
     d) ACTION='del'; ACTION_BOOL='1' ;;
     e) ACTION='add'; ACTION_BOOL='0' ;;
     t) TABLE="$OPTARG" ;;
-    *) help 0 ;;
+    *) echo_to_stderr '' 0 ;;
   esac
 done
 
+if [ "$UID" -ne '0' ]; then
+    echo_to_stderr "ERROR: uid '$UID' doesn't have sufficient privilege for this script." 1
+fi
+
 if [ -z "$ACTION" ]; then
-    help 1    
+    echo_to_stderr '' 1    
 fi
 
 if [[ ! "$TABLE" =~ ^[0-9]+$ ]]; then
-    echo -e "WARNING: '$TABLE' is not a valid table number, default to '8888'." >&2
+    echo_to_stderr "WARNING: '$TABLE' is not a valid table number, default to '8888'."
     TABLE='8888'
 fi
-
 
 ROUTE_4="$(ip -4 route list default)"
 ROUTE_6="$(ip -6 route list default)"
